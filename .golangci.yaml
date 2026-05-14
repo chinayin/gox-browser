@@ -1,0 +1,203 @@
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+  modules-download-mode: readonly
+
+linters:
+  default: none
+  enable:
+    # Core linters
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    # Code quality
+    - gocritic
+    - revive
+    - unconvert
+    - misspell
+    - whitespace
+    # Complexity
+    - gocyclo
+    - gocognit
+    - nestif
+    # Security
+    - gosec
+    # Bug detection
+    - copyloopvar
+    - nilerr
+    - nilnil
+    # Performance
+    - prealloc
+    # Standards
+    - nolintlint
+    - errname
+    - errorlint
+    # Team specific
+    - tagliatelle
+  settings:
+    errcheck:
+      check-type-assertions: true
+      check-blank: false
+      exclude-functions:
+        - (io.Closer).Close
+        - (*database/sql.Rows).Close
+        - (io.ReadCloser).Close
+        - fmt.Fprintln
+        - fmt.Fprintf
+        - fmt.Print
+
+    govet:
+      enable:
+        - assign
+        - atomic
+        - bools
+        - buildtag
+        - copylocks
+        - errorsas
+        - httpresponse
+        - ifaceassert
+        - loopclosure
+        - lostcancel
+        - nilfunc
+        - printf
+        - shift
+        - stdmethods
+        - structtag
+        - tests
+        - unmarshal
+        - unreachable
+        - unsafeptr
+        - unusedresult
+        - nilness
+        - sortslice
+        - stringintconv
+        - sigchanyzer
+        - reflectvaluecompare
+        - testinggoroutine
+      disable:
+        - shadow
+        - fieldalignment
+
+    gocyclo:
+      min-complexity: 15
+
+    gocognit:
+      min-complexity: 20
+
+    nestif:
+      min-complexity: 4
+
+    misspell:
+      locale: US
+      ignore-rules:
+        - chinayin
+        - gox
+
+    revive:
+      enable-all-rules: false
+      rules:
+        - name: atomic
+        - name: context-keys-type
+        - name: defer
+          arguments: [[ "immediate-recover", "recover", "return" ]]
+        - name: duplicated-imports
+        - name: errorf
+        - name: string-of-int
+        - name: time-equal
+        - name: unconditional-recursion
+        - name: useless-break
+        - name: waitgroup-by-value
+        - name: error-return
+          severity: warning
+          disabled: false
+        - name: error-strings
+          severity: warning
+          disabled: false
+        - name: receiver-naming
+          severity: warning
+          disabled: false
+        - name: var-naming
+          severity: warning
+          disabled: false
+        - name: exported
+          severity: warning
+          disabled: false
+        - name: package-comments
+          severity: warning
+          disabled: false
+          arguments:
+            - disableStutteringCheck
+
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - style
+        - performance
+      disabled-checks:
+        - whyNoLint
+        - hugeParam
+        - rangeValCopy
+
+    gosec:
+      excludes:
+        - G104
+      config:
+        global:
+          nosec: false
+          show-ignored: false
+          audit: false
+
+    tagliatelle:
+      case:
+        rules:
+          json: snake
+          yaml: snake
+          mapstructure: snake
+        use-field-name: false
+
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - path: '(.+)_test\.go'
+        linters:
+          - errcheck
+          - gocritic
+          - gocyclo
+          - gocognit
+          - nestif
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+
+formatters:
+  enable:
+    - gofmt
+    - gofumpt
+    - goimports
+  settings:
+    gofmt:
+      rewrite-rules:
+        - pattern: interface{}
+          replacement: any
+    gofumpt:
+      extra-rules: true
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
