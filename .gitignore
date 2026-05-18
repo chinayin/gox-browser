@@ -34,3 +34,6 @@ build/
 coverage.txt
 coverage.html
 *.coverprofile
+
+# Integration test runtime output
+runtime/

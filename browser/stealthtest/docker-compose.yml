@@ -1,0 +1,30 @@
+services:
+  chrome:
+    image: ghcr.io/browserless/chromium:v2.49.0
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    shm_size: 2g
+    mem_limit: 4g
+    environment:
+      - TOKEN=test123
+      - TIMEOUT=600000
+      - CONCURRENT=50
+      - QUEUED=20
+
+  cloakbrowser:
+    image: cloakhq/cloakbrowser:0.3.28
+    command: cloakserve --headless=false
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9222:9222"
+    shm_size: 2g
+    mem_limit: 4g
+    environment:
+      - CLOAKBROWSER_AUTO_UPDATE=false
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9222/json/version"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

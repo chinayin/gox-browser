@@ -63,6 +63,10 @@ func (b *surfBrowser) Eval(_ context.Context, _ string) (string, error) {
 	return "", browser.ErrUnsupported
 }
 
+func (b *surfBrowser) EvalDirect(_ context.Context, _ string) (string, error) {
+	return "", browser.ErrUnsupported
+}
+
 func (b *surfBrowser) Click(_ context.Context, _ string) error {
 	return browser.ErrUnsupported
 }

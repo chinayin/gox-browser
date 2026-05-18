@@ -129,6 +129,29 @@ func (b *rodBrowser) Eval(ctx context.Context, js string) (string, error) {
 	return result.Value.String(), nil
 }
 
+func (b *rodBrowser) EvalDirect(ctx context.Context, js string) (string, error) {
+	expression := "(" + js + ")()"
+
+	res, err := proto.RuntimeEvaluate{
+		Expression:    expression,
+		AwaitPromise:  true,
+		ReturnByValue: true,
+		UserGesture:   true,
+	}.Call(b.page)
+	if err != nil {
+		return "", fmt.Errorf("browser: rod eval direct: %w", err)
+	}
+	if res.ExceptionDetails != nil {
+		return "", fmt.Errorf("browser: rod eval direct exception: %s", res.ExceptionDetails.Text)
+	}
+
+	val := res.Result
+	if val.Type == "undefined" {
+		return "", nil
+	}
+	return val.Value.String(), nil
+}
+
 func (b *rodBrowser) Click(ctx context.Context, selector string) error {
 	el, err := b.page.Context(ctx).Element(selector)
 	if err != nil {

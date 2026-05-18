@@ -15,6 +15,10 @@ type Browser interface {
 	URL(ctx context.Context) (string, error)
 	Screenshot(ctx context.Context) ([]byte, error)
 	Eval(ctx context.Context, js string) (string, error)
+	// EvalDirect 直接通过 CDP 执行 JS，不等待 navigation lifecycle。
+	// 使用场景: 页面目标元素已确认存在，只需操作 DOM (SPA 表单交互、DOM 读取)。
+	// 不确定目标元素是否存在时，请先用 WaitSelector 或自行轮询确认后再调用。
+	EvalDirect(ctx context.Context, js string) (string, error)
 	Click(ctx context.Context, selector string) error
 	Type(ctx context.Context, selector, text string) error
 	WaitSelector(ctx context.Context, selector string) error

@@ -86,6 +86,13 @@ func (m *mockBrowser) Eval(ctx context.Context, js string) (string, error) {
 	return "", nil
 }
 
+func (m *mockBrowser) EvalDirect(ctx context.Context, js string) (string, error) {
+	if m.evalFunc != nil {
+		return m.evalFunc(ctx, js)
+	}
+	return "", nil
+}
+
 func (m *mockBrowser) Click(ctx context.Context, selector string) error {
 	if m.clickFunc != nil {
 		return m.clickFunc(ctx, selector)

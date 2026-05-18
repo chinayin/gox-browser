@@ -2,6 +2,8 @@ package rod
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,6 +16,7 @@ import (
 	browser "github.com/chinayin/gox-browser/browser"
 
 	"github.com/go-rod/rod"
+	"github.com/go-rod/rod/lib/cdp"
 	"github.com/go-rod/rod/lib/launcher"
 	"github.com/go-rod/rod/lib/proto"
 	"github.com/go-rod/stealth"
@@ -233,7 +236,20 @@ func (p *Provider) ensureBrowser(ctx context.Context) (*rod.Browser, error) {
 		slog.Info("browser: rod launched local chrome", "headless", p.cfg.Headless)
 	}
 
-	b := rod.New().ControlURL(controlURL)
+	var b *rod.Browser
+	if p.cfg.RemoteURL != "" {
+		// 远程连接时使用标准 Sec-WebSocket-Key，兼容 aiohttp 等严格校验的 WebSocket 服务端
+		wsHeader := http.Header{
+			"Sec-WebSocket-Key": {generateWebSocketKey()},
+		}
+		client, err := cdp.StartWithURL(ctx, controlURL, wsHeader)
+		if err != nil {
+			return nil, fmt.Errorf("browser: rod connect: %w", err)
+		}
+		b = rod.New().Client(client)
+	} else {
+		b = rod.New().ControlURL(controlURL)
+	}
 	if err := b.Connect(); err != nil {
 		return nil, fmt.Errorf("browser: rod connect: %w", err)
 	}
@@ -304,6 +320,11 @@ func isAllowedScriptDomain(host string, allowed []string) bool {
 }
 
 func (p *Provider) resolveRemoteURL() (string, error) {
+	// 如果 RemoteURL 已经是 ws:// 或 wss:// 开头，直接使用，不做 resolve
+	if strings.HasPrefix(p.cfg.RemoteURL, "ws://") || strings.HasPrefix(p.cfg.RemoteURL, "wss://") {
+		return p.cfg.RemoteURL, nil
+	}
+
 	if p.cfg.RemoteToken == "" {
 		resolved, err := launcher.ResolveURL(p.cfg.RemoteURL)
 		if err != nil {
@@ -358,4 +379,11 @@ func (p *Provider) resolveRemoteURL() (string, error) {
 	}
 
 	return wsURL, nil
+}
+
+// generateWebSocketKey 生成符合 RFC 6455 规范的 Sec-WebSocket-Key (16 字节随机数的 base64 编码)
+func generateWebSocketKey() string {
+	key := make([]byte, 16)
+	_, _ = rand.Read(key)
+	return base64.StdEncoding.EncodeToString(key)
 }

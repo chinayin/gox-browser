@@ -1,4 +1,4 @@
-.PHONY: help test lint lint-fix fmt tidy clean coverage install-tools check
+.PHONY: help test lint lint-fix fmt tidy clean coverage install-tools check integration-up integration-down integration-test
 
 # Default target
 help:
@@ -12,6 +12,9 @@ help:
 	@echo "  make clean         - Clean build artifacts"
 	@echo "  make install-tools - Install required tools"
 	@echo "  make check         - Run full checks (fmt + lint + test)"
+	@echo "  make integration-up   - Start integration test services (docker)"
+	@echo "  make integration-down - Stop integration test services"
+	@echo "  make integration-test - Run stealth integration tests"
 
 # Install required tools
 install-tools:
@@ -59,6 +62,25 @@ clean:
 	@rm -f coverage.txt coverage.html
 	@go clean -cache -testcache
 	@echo "Clean complete!"
+
+# Start integration test dependencies
+integration-up:
+	@echo "Starting integration test services..."
+	@docker compose -f browser/stealthtest/docker-compose.yml up -d
+	@echo "Waiting for services to be ready..."
+	@sleep 10
+	@echo "Services started!"
+
+# Stop integration test dependencies
+integration-down:
+	@echo "Stopping integration test services..."
+	@docker compose -f browser/stealthtest/docker-compose.yml down
+	@echo "Services stopped!"
+
+# Run integration tests (requires services running)
+integration-test:
+	@echo "Running integration tests..."
+	@go test -tags integration -v -timeout 600s ./browser/stealthtest/
 
 # Run all checks
 check: fmt lint test

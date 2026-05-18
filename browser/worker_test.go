@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -121,11 +122,14 @@ func TestWorker_Run_WithCallback(t *testing.T) {
 	pool := newWorkerTestPool(t)
 	detector := newMockBlockDetector()
 
+	var mu sync.Mutex
 	callbackResults := make(map[int]browser.TaskResult)
 	cfg := browser.WorkerConfig{
 		Concurrency: 2,
 		OnResult: func(idx int, result browser.TaskResult) {
+			mu.Lock()
 			callbackResults[idx] = result
+			mu.Unlock()
 		},
 	}
 	worker := browser.NewWorker(pool, detector, cfg)
@@ -142,5 +146,7 @@ func TestWorker_Run_WithCallback(t *testing.T) {
 
 	// Assert
 	require.Len(t, results, 2)
+	mu.Lock()
 	assert.Len(t, callbackResults, 2, "callback should be called for each task")
+	mu.Unlock()
 }

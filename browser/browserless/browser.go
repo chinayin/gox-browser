@@ -150,6 +150,11 @@ func (b *browserlessBrowser) Eval(ctx context.Context, js string) (string, error
 	return res.Result.Value.String(), nil
 }
 
+func (b *browserlessBrowser) EvalDirect(ctx context.Context, js string) (string, error) {
+	// Browserless 的 Eval 本身就是 CDP 直连，不存在 navigation 等待问题
+	return b.Eval(ctx, js)
+}
+
 func (b *browserlessBrowser) getOrCreateIsolatedWorld(ctx context.Context) (proto.RuntimeExecutionContextID, error) {
 	if b.isolatedCtxID != 0 {
 		return b.isolatedCtxID, nil
