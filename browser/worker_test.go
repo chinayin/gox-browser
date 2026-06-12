@@ -63,7 +63,7 @@ func TestWorker_Run_Success(t *testing.T) {
 	// Assert
 	require.Len(t, results, 3)
 	for i, r := range results {
-		assert.NoError(t, r.Err, "task %d should succeed", i)
+		require.NoError(t, r.Err, "task %d should succeed", i)
 		assert.NotNil(t, r.FetchResult, "task %d should have FetchResult", i)
 		assert.Equal(t, tasks[i].URL, r.URL)
 		assert.Greater(t, r.Duration, time.Duration(0))
@@ -99,7 +99,7 @@ func TestWorker_Run_ContextCancel(t *testing.T) {
 			canceledCount++
 		}
 	}
-	assert.Greater(t, canceledCount, 0, "at least some tasks should be canceled")
+	assert.Positive(t, canceledCount, "at least some tasks should be canceled")
 }
 
 func TestWorker_Run_EmptyTasks(t *testing.T) {

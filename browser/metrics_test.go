@@ -84,7 +84,7 @@ func TestMetrics_RecordLatency(t *testing.T) {
 	// Assert via snapshot
 	snap := m.Snapshot()
 	assert.Equal(t, 50*time.Millisecond+500*time.Microsecond, snap.AvgLatency) // avg of 1..100 = 50.5ms
-	assert.Greater(t, int64(snap.P50Latency), int64(0))
+	assert.Positive(t, int64(snap.P50Latency))
 	assert.Greater(t, int64(snap.P95Latency), int64(snap.P50Latency))
 }
 
@@ -127,6 +127,6 @@ func TestMetrics_Snapshot_ZeroFetchTotal(t *testing.T) {
 	snap := m.Snapshot()
 
 	// Assert - no division by zero
-	assert.Equal(t, float64(0), snap.SuccessRate)
-	assert.Equal(t, float64(0), snap.FallbackRate)
+	assert.InDelta(t, 0, snap.SuccessRate, 0.0001)
+	assert.InDelta(t, 0, snap.FallbackRate, 0.0001)
 }

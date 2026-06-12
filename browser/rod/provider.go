@@ -210,7 +210,7 @@ func (p *Provider) ensureBrowser(ctx context.Context) (*rod.Browser, error) {
 
 	if p.cfg.RemoteURL != "" { //nolint:nestif // 本地/远程两种模式的分支逻辑
 		var err error
-		controlURL, err = p.resolveRemoteURL()
+		controlURL, err = p.resolveRemoteURL(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -325,7 +325,7 @@ func isAllowedScriptDomain(host string, allowed []string) bool {
 	return false
 }
 
-func (p *Provider) resolveRemoteURL() (string, error) {
+func (p *Provider) resolveRemoteURL(ctx context.Context) (string, error) {
 	// 如果 RemoteURL 已经是 ws:// 或 wss:// 开头，直接使用，不做 resolve
 	if strings.HasPrefix(p.cfg.RemoteURL, "ws://") || strings.HasPrefix(p.cfg.RemoteURL, "wss://") {
 		return p.cfg.RemoteURL, nil
@@ -341,8 +341,13 @@ func (p *Provider) resolveRemoteURL() (string, error) {
 
 	versionURL := strings.TrimRight(p.cfg.RemoteURL, "/") + "/json/version?token=" + p.cfg.RemoteToken
 
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, versionURL, http.NoBody)
+	if err != nil {
+		return "", fmt.Errorf("browser: rod build version request %q: %w", versionURL, err)
+	}
+
 	client := &http.Client{Timeout: resolveRemoteTimeout}
-	resp, err := client.Get(versionURL)
+	resp, err := client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("browser: rod resolve remote url %q: %w", versionURL, err)
 	}

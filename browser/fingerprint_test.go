@@ -129,8 +129,8 @@ func TestRandomViewport(t *testing.T) {
 	vp := browser.RandomViewport()
 
 	// Assert
-	assert.Greater(t, vp.Width, 0)
-	assert.Greater(t, vp.Height, 0)
+	assert.Positive(t, vp.Width)
+	assert.Positive(t, vp.Height)
 	assert.Greater(t, vp.Scale, 0.0)
 	assert.True(t, slices.Contains(browser.Viewports, vp),
 		"returned viewport should be from predefined list")

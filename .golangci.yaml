@@ -38,6 +38,10 @@ linters:
     - errorlint
     # Team specific
     - tagliatelle
+    - sloglint     # rules.md: 业务代码统一 log/slog
+    - testifylint  # rules.md: 测试统一 testify
+    - noctx        # rules.md: 外部调用必须带 context/timeout
+    - intrange     # Go 1.22+: for i := range n
   settings:
     errcheck:
       check-type-assertions: true
@@ -50,34 +54,9 @@ linters:
         - fmt.Fprintf
         - fmt.Print
 
+    # enable-all 自动跟进新版 govet 的 analyzer，避免手工枚举滞后
     govet:
-      enable:
-        - assign
-        - atomic
-        - bools
-        - buildtag
-        - copylocks
-        - errorsas
-        - httpresponse
-        - ifaceassert
-        - loopclosure
-        - lostcancel
-        - nilfunc
-        - printf
-        - shift
-        - stdmethods
-        - structtag
-        - tests
-        - unmarshal
-        - unreachable
-        - unsafeptr
-        - unusedresult
-        - nilness
-        - sortslice
-        - stringintconv
-        - sigchanyzer
-        - reflectvaluecompare
-        - testinggoroutine
+      enable-all: true
       disable:
         - shadow
         - fieldalignment
@@ -95,6 +74,7 @@ linters:
       locale: US
       ignore-rules:
         - chinayin
+        - uhomes
         - gox
 
     revive:

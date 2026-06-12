@@ -7,6 +7,7 @@ import (
 
 	"github.com/chinayin/gox-browser/browser"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestIsConnectionError(t *testing.T) {
@@ -133,6 +134,6 @@ func TestWAFBlockedError_ErrorsIs(t *testing.T) {
 	}
 
 	// Act & Assert
-	assert.True(t, errors.Is(wafErr, browser.ErrWAFBlocked))
-	assert.False(t, errors.Is(wafErr, browser.ErrPoolClosed))
+	require.ErrorIs(t, wafErr, browser.ErrWAFBlocked)
+	require.NotErrorIs(t, wafErr, browser.ErrPoolClosed)
 }

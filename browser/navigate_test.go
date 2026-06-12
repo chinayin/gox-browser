@@ -83,11 +83,11 @@ func TestNavigateAndCheck_WAFBlocked(t *testing.T) {
 	// Assert
 	require.Error(t, err)
 	assert.Nil(t, result)
-	assert.True(t, errors.Is(err, browser.ErrWAFBlocked),
+	require.ErrorIs(t, err, browser.ErrWAFBlocked,
 		"error should wrap ErrWAFBlocked, got: %v", err)
 
 	var wafErr *browser.WAFBlockedError
-	assert.True(t, errors.As(err, &wafErr))
+	require.ErrorAs(t, err, &wafErr)
 	assert.Equal(t, "cloudflare", wafErr.Result.Type)
 }
 

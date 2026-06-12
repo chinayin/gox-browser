@@ -3,7 +3,6 @@ package browser_test
 import (
 	"context"
 	"errors"
-	"strings"
 	"testing"
 	"time"
 
@@ -70,7 +69,7 @@ func TestPool_Acquire_NoProvider(t *testing.T) {
 
 	// Assert
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, browser.ErrProviderNotFound),
+	assert.ErrorIs(t, err, browser.ErrProviderNotFound,
 		"error should wrap ErrProviderNotFound, got: %v", err)
 }
 
@@ -91,7 +90,7 @@ func TestPool_Acquire_PoolClosed(t *testing.T) {
 
 	// Assert
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, browser.ErrPoolClosed),
+	assert.ErrorIs(t, err, browser.ErrPoolClosed,
 		"error should be ErrPoolClosed, got: %v", err)
 }
 
@@ -206,7 +205,7 @@ func TestPool_Close(t *testing.T) {
 
 	// Verify pool is closed
 	_, err = pool.Acquire(ctx, browser.AcquireOpts{Type: browser.TypeSurf})
-	assert.True(t, errors.Is(err, browser.ErrPoolClosed))
+	assert.ErrorIs(t, err, browser.ErrPoolClosed)
 }
 
 func TestPool_Acquire_ReuseIdle(t *testing.T) {
@@ -279,7 +278,7 @@ func TestPool_WAFBlockedError(t *testing.T) {
 	}
 
 	// Assert
-	assert.True(t, errors.Is(wafErr, browser.ErrWAFBlocked))
-	assert.True(t, strings.Contains(wafErr.Error(), "cloudflare"))
-	assert.True(t, strings.Contains(wafErr.Error(), "http://example.com"))
+	require.ErrorIs(t, wafErr, browser.ErrWAFBlocked)
+	assert.Contains(t, wafErr.Error(), "cloudflare")
+	assert.Contains(t, wafErr.Error(), "http://example.com")
 }

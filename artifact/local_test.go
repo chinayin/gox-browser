@@ -5,7 +5,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/chinayin/gox-browser/artifact"
@@ -105,7 +104,7 @@ func TestLocalStore_Download_NotFound(t *testing.T) {
 
 	// Assert
 	require.Error(t, err)
-	assert.True(t, strings.Contains(err.Error(), "not found"),
+	assert.Contains(t, err.Error(), "not found",
 		"error should contain 'not found', got: %s", err.Error())
 }
 
@@ -142,6 +141,6 @@ func TestLocalStore_Reader_NotFound(t *testing.T) {
 
 	// Assert
 	require.Error(t, err)
-	assert.True(t, strings.Contains(err.Error(), "not found"),
+	assert.Contains(t, err.Error(), "not found",
 		"error should contain 'not found', got: %s", err.Error())
 }

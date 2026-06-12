@@ -31,7 +31,7 @@ func TestNewFetcher_PrimaryNotRegistered(t *testing.T) {
 		browser.WithPrimary(browser.TypeRodHeadless),
 	)
 
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Nil(t, f)
 	assert.Contains(t, err.Error(), "primary provider")
 }
