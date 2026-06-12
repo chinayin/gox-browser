@@ -136,23 +136,29 @@ func (p *Provider) Create(ctx context.Context, opts browser.AcquireOpts) (b brow
 		return nil, fmt.Errorf("browser: rod set viewport: %w", err)
 	}
 
-	if err := p.setupRequestInterception(page); err != nil {
-		page.Close()
-		return nil, err
+	var router *rod.HijackRouter
+	if p.hijackEnabled() {
+		router, err = p.setupRequestInterception(page)
+		if err != nil {
+			page.Close()
+			return nil, err
+		}
 	}
 
 	return &rodBrowser{
 		page:     page,
+		router:   router,
 		headless: p.cfg.Headless,
 	}, nil
 }
 
-func (p *Provider) setupRequestInterception(page *rod.Page) error {
-	needHijack := len(p.cfg.BlockResources) > 0 || p.cfg.BlockThirdPartyScript
-	if !needHijack {
-		return nil
-	}
+// hijackEnabled 是否启用了请求拦截
+func (p *Provider) hijackEnabled() bool {
+	return len(p.cfg.BlockResources) > 0 || p.cfg.BlockThirdPartyScript
+}
 
+// setupRequestInterception 启用请求拦截，返回的 router 由调用方负责在关闭时 Stop。
+func (p *Provider) setupRequestInterception(page *rod.Page) (*rod.HijackRouter, error) {
 	blocked := make(map[proto.NetworkResourceType]bool, len(p.cfg.BlockResources))
 	for _, rt := range p.cfg.BlockResources {
 		blocked[proto.NetworkResourceType(rt)] = true
@@ -176,7 +182,7 @@ func (p *Provider) setupRequestInterception(page *rod.Page) error {
 
 		ctx.ContinueRequest(&proto.FetchContinueRequest{})
 	}); err != nil {
-		return fmt.Errorf("browser: rod setup request interception: %w", err)
+		return nil, fmt.Errorf("browser: rod setup request interception: %w", err)
 	}
 	go router.Run()
 
@@ -184,7 +190,7 @@ func (p *Provider) setupRequestInterception(page *rod.Page) error {
 		"blocked_types", p.cfg.BlockResources,
 		"block_3p_script", p.cfg.BlockThirdPartyScript,
 	)
-	return nil
+	return router, nil
 }
 
 func (p *Provider) ensureBrowser(ctx context.Context) (*rod.Browser, error) {

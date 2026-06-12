@@ -72,6 +72,7 @@ type PoolConfig struct {
 	IdleTimeout     time.Duration
 	AcquireTimeout  time.Duration
 	HealthCheckFreq time.Duration
+	PingTimeout     time.Duration // 复用空闲实例前的存活探测超时，零值取 2s
 }
 
 // DefaultPoolConfig 默认池配置
@@ -80,6 +81,7 @@ var DefaultPoolConfig = PoolConfig{
 	IdleTimeout:     5 * time.Minute,
 	AcquireTimeout:  30 * time.Second,
 	HealthCheckFreq: 30 * time.Second,
+	PingTimeout:     2 * time.Second,
 }
 
 // PoolStats 浏览器池统计信息

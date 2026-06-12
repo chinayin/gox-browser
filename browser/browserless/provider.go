@@ -93,9 +93,13 @@ func (p *Provider) Create(ctx context.Context, opts browser.AcquireOpts) (browse
 		return nil, err
 	}
 
-	if err := p.setupRequestInterception(page); err != nil {
-		_ = page.Close()
-		return nil, err
+	var router *rod.HijackRouter
+	if p.hijackEnabled() {
+		router, err = p.setupRequestInterception(page)
+		if err != nil {
+			_ = page.Close()
+			return nil, err
+		}
 	}
 
 	p.applyViewportAndFingerprint(page, opts)
@@ -103,7 +107,7 @@ func (p *Provider) Create(ctx context.Context, opts browser.AcquireOpts) (browse
 	// 输出 DevTools debugger URL，可在浏览器中打开实时查看页面画面
 	p.logDebuggerURL(ep, page)
 
-	return &browserlessBrowser{page: page, browser: b, headless: true, endpoint: ep.URL}, nil
+	return &browserlessBrowser{page: page, browser: b, router: router, headless: true, endpoint: ep.URL}, nil
 }
 
 func (p *Provider) createPage(b *rod.Browser, opts browser.AcquireOpts) (*rod.Page, error) {
@@ -134,23 +138,32 @@ func (p *Provider) applyViewportAndFingerprint(page *rod.Page, opts browser.Acqu
 		if vp == browser.DefaultViewport {
 			vp = randomViewport()
 		}
+		// 指纹覆盖失败意味着反检测部分失效，必须可观测
 		tz := randomTimezone()
-		_ = (proto.EmulationSetTimezoneOverride{TimezoneID: tz}).Call(page)
+		if err := (proto.EmulationSetTimezoneOverride{TimezoneID: tz}).Call(page); err != nil {
+			slog.Warn("browser: browserless set timezone override failed", "timezone", tz, "error", err)
+		}
 		locale := randomLocale()
-		_ = (proto.EmulationSetLocaleOverride{Locale: locale}).Call(page)
+		if err := (proto.EmulationSetLocaleOverride{Locale: locale}).Call(page); err != nil {
+			slog.Warn("browser: browserless set locale override failed", "locale", locale, "error", err)
+		}
 	}
 
-	_ = page.SetViewport(&proto.EmulationSetDeviceMetricsOverride{
+	if err := page.SetViewport(&proto.EmulationSetDeviceMetricsOverride{
 		Width: vp.Width, Height: vp.Height, DeviceScaleFactor: vp.Scale, Mobile: vp.Mobile,
-	})
+	}); err != nil {
+		slog.Warn("browser: browserless set viewport failed",
+			"viewport", fmt.Sprintf("%dx%d", vp.Width, vp.Height), "error", err)
+	}
 }
 
-func (p *Provider) setupRequestInterception(page *rod.Page) error {
-	needHijack := len(p.cfg.BlockResources) > 0 || p.cfg.BlockThirdPartyScript
-	if !needHijack {
-		return nil
-	}
+// hijackEnabled 是否启用了请求拦截
+func (p *Provider) hijackEnabled() bool {
+	return len(p.cfg.BlockResources) > 0 || p.cfg.BlockThirdPartyScript
+}
 
+// setupRequestInterception 启用请求拦截，返回的 router 由调用方负责在关闭时 Stop。
+func (p *Provider) setupRequestInterception(page *rod.Page) (*rod.HijackRouter, error) {
 	blocked := make(map[proto.NetworkResourceType]bool, len(p.cfg.BlockResources))
 	for _, rt := range p.cfg.BlockResources {
 		blocked[proto.NetworkResourceType(rt)] = true
@@ -182,11 +195,11 @@ func (p *Provider) setupRequestInterception(page *rod.Page) error {
 
 		ctx.ContinueRequest(&proto.FetchContinueRequest{})
 	}); err != nil {
-		return fmt.Errorf("browser: browserless setup request interception: %w", err)
+		return nil, fmt.Errorf("browser: browserless setup request interception: %w", err)
 	}
 	go router.Run()
 
-	return nil
+	return router, nil
 }
 
 func (p *Provider) ensureBrowser(ctx context.Context, ep *Endpoint) (*rod.Browser, error) {

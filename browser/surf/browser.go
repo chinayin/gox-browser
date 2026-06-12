@@ -25,12 +25,13 @@ func (b *surfBrowser) Navigate(_ context.Context, url string) error {
 
 func (b *surfBrowser) WaitStable(_ context.Context) error { return nil }
 
-func (b *surfBrowser) HTML(_ context.Context) (string, error) {
+func (b *surfBrowser) HTML(ctx context.Context) (string, error) {
 	if b.lastURL == "" {
 		return "", fmt.Errorf("browser: surf no url navigated")
 	}
 
-	resp := b.client.Get(g.String(b.lastURL)).Do()
+	// ctx 接入请求，调用方的超时/取消生效（客户端级 Timeout 仍作兜底）
+	resp := b.client.Get(g.String(b.lastURL)).WithContext(ctx).Do()
 	if resp.IsErr() {
 		return "", fmt.Errorf("browser: surf get %q: %w", b.lastURL, resp.Err())
 	}
@@ -43,8 +44,8 @@ func (b *surfBrowser) HTML(_ context.Context) (string, error) {
 	return body.Ok().Std(), nil
 }
 
-func (b *surfBrowser) Text(_ context.Context) (string, error) {
-	return b.HTML(context.Background())
+func (b *surfBrowser) Text(ctx context.Context) (string, error) {
+	return b.HTML(ctx)
 }
 
 func (b *surfBrowser) Title(_ context.Context) (string, error) {

@@ -32,6 +32,9 @@ type poolEntry struct {
 }
 
 func NewPool(cfg PoolConfig) *Pool {
+	if cfg.PingTimeout <= 0 {
+		cfg.PingTimeout = DefaultPoolConfig.PingTimeout
+	}
 	p := &Pool{
 		cfg:       cfg,
 		providers: make(map[Type]Provider),
@@ -81,7 +84,7 @@ func (p *Pool) Acquire(ctx context.Context, opts AcquireOpts) (Browser, error) {
 		entry := entries[len(entries)-1]
 		p.instances[opts.Type] = entries[:len(entries)-1]
 
-		pingCtx, pingCancel := context.WithTimeout(ctx, 2*time.Second)
+		pingCtx, pingCancel := context.WithTimeout(ctx, p.cfg.PingTimeout)
 		_, pingErr := entry.browser.Title(pingCtx)
 		pingCancel()
 		if pingErr != nil {
@@ -143,7 +146,7 @@ func (p *Pool) waitForInstance(ctx context.Context, opts AcquireOpts) (Browser, 
 				entry := entries[len(entries)-1]
 				p.instances[opts.Type] = entries[:len(entries)-1]
 
-				pingCtx, pingCancel := context.WithTimeout(ctx, 2*time.Second)
+				pingCtx, pingCancel := context.WithTimeout(ctx, p.cfg.PingTimeout)
 				_, pingErr := entry.browser.Title(pingCtx)
 				pingCancel()
 				if pingErr != nil {

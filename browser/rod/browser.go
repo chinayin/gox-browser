@@ -24,6 +24,7 @@ const (
 
 type rodBrowser struct {
 	page     *rod.Page
+	router   *rod.HijackRouter // 请求拦截路由，未启用拦截时为 nil
 	headless bool
 }
 
@@ -61,22 +62,20 @@ func (b *rodBrowser) WaitStable(ctx context.Context) error {
 }
 
 func (b *rodBrowser) waitNetworkIdle(ctx context.Context) error {
-	wait := b.page.Context(ctx).WaitRequestIdle(rodNetworkIdleTimeout, nil, nil, nil)
+	// 用有界 ctx 驱动 rod 的等待：超时或上层取消时等待立即返回，
+	// 无需额外 goroutine，也不会残留
+	idleCtx, cancel := context.WithTimeout(ctx, rodNetworkIdleMaxWait)
+	defer cancel()
 
-	done := make(chan struct{})
-	go func() {
-		wait()
-		close(done)
-	}()
+	b.page.Context(idleCtx).WaitRequestIdle(rodNetworkIdleTimeout, nil, nil, nil)()
 
-	select {
-	case <-done:
-		return nil
-	case <-time.After(rodNetworkIdleMaxWait):
-		return fmt.Errorf("browser: rod network idle max wait exceeded")
-	case <-ctx.Done():
-		return ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return err
 	}
+	if idleCtx.Err() != nil {
+		return fmt.Errorf("browser: rod network idle max wait exceeded")
+	}
+	return nil
 }
 
 func (b *rodBrowser) HTML(ctx context.Context) (string, error) {
@@ -229,6 +228,13 @@ func (b *rodBrowser) BrowserType() browser.Type {
 }
 
 func (b *rodBrowser) Close() error {
+	// 先停 hijack router，回收其事件 goroutine，再关页面
+	if b.router != nil {
+		if err := b.router.Stop(); err != nil {
+			slog.Warn("browser: rod stop hijack router failed", "error", err)
+		}
+		b.router = nil
+	}
 	if err := b.page.Close(); err != nil {
 		return fmt.Errorf("browser: rod close page: %w", err)
 	}
