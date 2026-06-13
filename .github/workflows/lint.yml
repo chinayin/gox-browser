@@ -13,7 +13,6 @@ permissions:
 
 env:
   GO_VERSION: "1.26"
-  GOLANGCI_LINT_VERSION: latest
 
 jobs:
   golangci:
@@ -26,6 +25,9 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
+
+      - name: Read pinned golangci-lint version
+        run: echo "GOLANGCI_LINT_VERSION=$(cat .golangci-lint-version)" >> "$GITHUB_ENV"
 
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v9
