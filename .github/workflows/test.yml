@@ -10,12 +10,11 @@ on:
 
 jobs:
   test:
-    name: Test (Go ${{ matrix.go-version }})
+    name: Test
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [ ubuntu-latest ]
-        go-version: [ '1.26' ]
 
     steps:
       - name: Checkout code
@@ -24,7 +23,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: ${{ matrix.go-version }}
+          go-version-file: go.mod
 
       - name: Download dependencies
         run: go mod download
@@ -33,7 +32,7 @@ jobs:
         run: make coverage
 
       - name: Upload coverage to Codecov
-        if: matrix.go-version == '1.26' && matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-latest'
         uses: codecov/codecov-action@v6
         with:
           files: ./coverage.txt
