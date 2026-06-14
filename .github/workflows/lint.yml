@@ -26,10 +26,7 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
 
-      - name: Read pinned golangci-lint version
-        run: echo "GOLANGCI_LINT_VERSION=$(cat .golangci-lint-version)" >> "$GITHUB_ENV"
-
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:
-          version: ${{ env.GOLANGCI_LINT_VERSION }}
+          version-file: .golangci-lint-version
