@@ -47,7 +47,9 @@ func TestDir_ExistsAndGet(t *testing.T) {
 	if ok {
 		t.Fatal("Exists before Put should be false")
 	}
-	_ = d.Put(ctx, "a.json", []byte("hi"), nil)
+	if err := d.Put(ctx, "a.json", []byte("hi"), nil); err != nil {
+		t.Fatal(err)
+	}
 	ok, _ = d.Exists(ctx, "a.json")
 	if !ok {
 		t.Fatal("Exists after Put should be true")
@@ -55,6 +57,39 @@ func TestDir_ExistsAndGet(t *testing.T) {
 	got, _ := d.Get(ctx, "a.json")
 	if string(got) != "hi" {
 		t.Fatalf("Get = %q", got)
+	}
+}
+
+func TestDir_RejectsInvalidNamespace(t *testing.T) {
+	st := New(NewLocalStore(LocalConfig{BaseDir: t.TempDir()}))
+	ctx := context.Background()
+
+	tests := []struct {
+		name      string
+		namespace string
+	}{
+		{name: "空命名空间", namespace: ""},
+		{name: "绝对路径", namespace: "/etc/passwd"},
+		{name: "相对路径逃出", namespace: "../evil"},
+		{name: "规整到根目录", namespace: "x/.."},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d := st.Dir(tt.namespace)
+			if err := d.Put(ctx, "a.json", []byte("x"), nil); err == nil {
+				t.Errorf("Put with namespace=%q should return error, but got nil", tt.namespace)
+			}
+			if _, err := d.Get(ctx, "a.json"); err == nil {
+				t.Errorf("Get with namespace=%q should return error, but got nil", tt.namespace)
+			}
+			if _, err := d.Exists(ctx, "a.json"); err == nil {
+				t.Errorf("Exists with namespace=%q should return error, but got nil", tt.namespace)
+			}
+			if err := d.Finalize(ctx); err == nil {
+				t.Errorf("Finalize with namespace=%q should return error, but got nil", tt.namespace)
+			}
+		})
 	}
 }
 

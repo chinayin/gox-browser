@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	smithy "github.com/aws/smithy-go"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -57,6 +59,40 @@ func TestNewS3Store_PrefixHandling(t *testing.T) {
 			})
 
 			assert.Equal(t, tt.wantPrefix, store.prefix)
+		})
+	}
+}
+
+// TestS3Store_FullKey 断言 fullKey 正确拼接 prefix，覆盖 NewS3Store_PrefixHandling
+// 未直接验证的 fullKey 行为。
+func TestS3Store_FullKey(t *testing.T) {
+	s := NewS3Store(S3Config{
+		Endpoint: "https://s3.example.com", Bucket: "b", Region: "us-east-1",
+		AccessKey: "ak", SecretKey: "sk", Prefix: "artifacts",
+	})
+	assert.Equal(t, "artifacts/task-1/a.json", s.fullKey("task-1/a.json"))
+}
+
+// TestS3Store_IsNotFound 用合成错误离线断言 isS3NotFound 的判定逻辑，
+// 因为默认 CI 中 S3 集成测试会被 Skip，这条路径原本完全没有覆盖。
+func TestS3Store_IsNotFound(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{name: "NoSuchKey 类型", err: &types.NoSuchKey{}, want: true},
+		{name: "NotFound 类型", err: &types.NotFound{}, want: true},
+		{name: "GenericAPIError NoSuchKey", err: &smithy.GenericAPIError{Code: "NoSuchKey"}, want: true},
+		{name: "GenericAPIError NotFound", err: &smithy.GenericAPIError{Code: "NotFound"}, want: true},
+		{name: "GenericAPIError AccessDenied", err: &smithy.GenericAPIError{Code: "AccessDenied"}, want: false},
+		{name: "普通 error", err: errors.New("boom"), want: false},
+		{name: "nil", err: nil, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, isS3NotFound(tt.err))
 		})
 	}
 }
