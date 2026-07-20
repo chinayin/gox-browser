@@ -95,7 +95,7 @@ func TestLocalStore_RejectsSymlinkEscape(t *testing.T) {
 
 	// 在外部目录创建真实文件
 	externalFile := externalDir + "/external.txt"
-	if err := os.WriteFile(externalFile, []byte("external"), 0644); err != nil {
+	if err := os.WriteFile(externalFile, []byte("external"), 0o600); err != nil {
 		t.Fatalf("WriteFile external: %v", err)
 	}
 
