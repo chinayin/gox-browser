@@ -2,7 +2,7 @@ package artifact
 
 // Index 是一个 artifact 目录（命名空间）的清单，index.json 的反序列化结构。
 type Index struct {
-	Version     string  `json:"version"`      // "v1"
+	Version     string  `json:"version"` // "v1"
 	Namespace   string  `json:"namespace"`
 	GeneratedAt int64   `json:"generated_at"` // Unix 秒
 	Artifacts   []Entry `json:"artifacts"`
@@ -11,7 +11,7 @@ type Index struct {
 
 // Entry 清单里的一个 artifact 条目。
 type Entry struct {
-	Ref         string            `json:"ref"`          // 相对命名空间
+	Ref         string            `json:"ref"` // 相对命名空间
 	ContentType string            `json:"content_type"`
 	Size        int64             `json:"size"`
 	Checksum    string            `json:"checksum"` // "sha256:..."
