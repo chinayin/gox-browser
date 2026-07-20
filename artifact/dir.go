@@ -48,7 +48,7 @@ func (d *Dir) Put(ctx context.Context, ref string, data []byte, tags map[string]
 		return err
 	}
 	sum := sha256.Sum256(data)
-	d.record(Entry{Ref: ref, ContentType: ct, Size: int64(len(data)), Checksum: "sha256:" + hex.EncodeToString(sum[:]), Tags: tags})
+	d.record(Entry{Ref: ref, ContentType: ct, Size: int64(len(data)), Checksum: "sha256:" + hex.EncodeToString(sum[:]), Tags: copyTags(tags)})
 	return nil
 }
 
@@ -65,7 +65,7 @@ func (d *Dir) PutReader(ctx context.Context, ref string, r io.Reader, tags map[s
 	if err := d.store.PutReader(ctx, d.key(ref), tee, ct); err != nil {
 		return err
 	}
-	d.record(Entry{Ref: ref, ContentType: ct, Size: cw.n, Checksum: "sha256:" + hex.EncodeToString(h.Sum(nil)), Tags: tags})
+	d.record(Entry{Ref: ref, ContentType: ct, Size: cw.n, Checksum: "sha256:" + hex.EncodeToString(h.Sum(nil)), Tags: copyTags(tags)})
 	return nil
 }
 
@@ -159,7 +159,19 @@ func (w *countingWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// cleanRef 校验并规整 ref：拒绝空/绝对路径/逃出命名空间的 "..”。
+// copyTags 防御性拷贝 tags map，避免 data race；nil 则保持 nil。
+func copyTags(tags map[string]string) map[string]string {
+	if tags == nil {
+		return nil
+	}
+	out := make(map[string]string, len(tags))
+	for k, v := range tags {
+		out[k] = v
+	}
+	return out
+}
+
+// cleanRef 校验并规整 ref：拒绝空/绝对路径/逃出命名空间的 ".."。
 func cleanRef(ref string) (string, error) {
 	if ref == "" {
 		return "", fmt.Errorf("artifact: empty ref")
@@ -170,6 +182,9 @@ func cleanRef(ref string) (string, error) {
 	cleaned := path.Clean(ref)
 	if cleaned == ".." || strings.HasPrefix(cleaned, "../") {
 		return "", fmt.Errorf("artifact: ref escapes namespace: %q", ref)
+	}
+	if cleaned == "." {
+		return "", fmt.Errorf("artifact: ref resolves to namespace root: %q", ref)
 	}
 	return cleaned, nil
 }

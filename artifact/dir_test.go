@@ -60,7 +60,36 @@ func TestDir_ExistsAndGet(t *testing.T) {
 
 func TestDir_RejectsEscapingRef(t *testing.T) {
 	d := New(NewLocalStore(LocalConfig{BaseDir: t.TempDir()})).Dir("task-1")
-	if err := d.Put(context.Background(), "../evil", []byte("x"), nil); err == nil {
-		t.Fatal("Put with escaping ref should error")
+	ctx := context.Background()
+
+	tests := []struct {
+		name string
+		ref  string
+	}{
+		{
+			name: "相对路径逃出",
+			ref:  "../evil",
+		},
+		{
+			name: "绝对路径拒绝",
+			ref:  "/etc/passwd",
+		},
+		{
+			name: "空 ref 拒绝",
+			ref:  "",
+		},
+		{
+			name: "规整到根目录的 ref",
+			ref:  "x/..",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := d.Put(ctx, tt.ref, []byte("x"), nil)
+			if err == nil {
+				t.Errorf("Put with ref=%q should return error, but got nil", tt.ref)
+			}
+		})
 	}
 }
