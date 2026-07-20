@@ -6,5 +6,5 @@
 // 基本用法:
 //
 //	store := artifact.NewLocalStore(artifact.LocalConfig{BaseDir: "runtime/artifacts"})
-//	path, err := store.Upload(ctx, "task-001", "step_01", "screenshot.png", pngData)
+//	err := store.Put(ctx, "task-001/step_01/screenshot.png", pngData, "image/png")
 package artifact

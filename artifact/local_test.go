@@ -3,6 +3,7 @@ package artifact
 import (
 	"context"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -85,5 +86,37 @@ func TestLocalStore_ReaderNotFound(t *testing.T) {
 	s := NewLocalStore(LocalConfig{BaseDir: t.TempDir()})
 	if _, err := s.Reader(context.Background(), "task-1/missing"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("Reader missing err = %v, want ErrNotFound", err)
+	}
+}
+
+func TestLocalStore_RejectsSymlinkEscape(t *testing.T) {
+	baseDir := t.TempDir()
+	externalDir := t.TempDir()
+
+	// 在外部目录创建真实文件
+	externalFile := externalDir + "/external.txt"
+	if err := os.WriteFile(externalFile, []byte("external"), 0644); err != nil {
+		t.Fatalf("WriteFile external: %v", err)
+	}
+
+	// 在 baseDir 内创建指向外部文件的软链
+	symlinkPath := baseDir + "/link"
+	if err := os.Symlink(externalFile, symlinkPath); err != nil {
+		t.Skip("symlink 不可用")
+	}
+
+	s := NewLocalStore(LocalConfig{BaseDir: baseDir})
+	ctx := context.Background()
+
+	// 尝试通过软链 key 读取，应该被拒绝
+	_, err := s.Get(ctx, "link")
+	if err == nil || !strings.Contains(err.Error(), "escapes base dir") {
+		t.Fatalf("Get via symlink should error with 'escapes base dir', got: %v", err)
+	}
+
+	// Reader 也应该被拒绝
+	_, err = s.Reader(ctx, "link")
+	if err == nil || !strings.Contains(err.Error(), "escapes base dir") {
+		t.Fatalf("Reader via symlink should error with 'escapes base dir', got: %v", err)
 	}
 }
