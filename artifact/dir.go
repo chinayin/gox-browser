@@ -1,0 +1,222 @@
+package artifact
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"io"
+	"path"
+	"strings"
+	"sync"
+	"time"
+)
+
+const (
+	indexFileName = "index.json"
+	indexVersion  = "v1"
+)
+
+// Store 是 artifact 组件入口，持有一个 Storer 后端。
+type Store struct{ backend Storer }
+
+// New 用给定后端创建 Store。
+func New(backend Storer) *Store { return &Store{backend: backend} }
+
+// Dir 返回绑定命名空间的目录门面。
+//
+// namespace 非法（空/绝对路径/含 ".." 逃逸）时不会 panic：Dir() 签名保持
+// 不变，非法状态记在返回的 Dir 上，后续任何读写操作都会返回同一个错误。
+func (s *Store) Dir(namespace string) *Dir {
+	clean, err := cleanRef(namespace)
+	if err != nil {
+		return &Dir{store: s.backend, namespace: namespace, invalid: fmt.Errorf("artifact: invalid namespace %q: %w", namespace, err)}
+	}
+	return &Dir{store: s.backend, namespace: clean}
+}
+
+// Dir 是绑定命名空间的 artifact 目录门面，消费方唯一入口。
+type Dir struct {
+	store     Storer
+	namespace string
+	invalid   error // namespace 非法时记录原因，所有操作直接返回该错误
+	mu        sync.Mutex
+	entries   []Entry // 内存累积，Finalize 时写成 index.json
+}
+
+// Put 写入一个 artifact（ref 相对命名空间，如 "uploads/envelope.json"）。
+func (d *Dir) Put(ctx context.Context, ref string, data []byte, tags map[string]string) error {
+	if d.invalid != nil {
+		return d.invalid
+	}
+	ref, err := cleanRef(ref)
+	if err != nil {
+		return err
+	}
+	ct := DetectContentType(ref)
+	if err := d.store.Put(ctx, d.key(ref), data, ct); err != nil {
+		return err
+	}
+	sum := sha256.Sum256(data)
+	d.record(Entry{Ref: ref, ContentType: ct, Size: int64(len(data)), Checksum: "sha256:" + hex.EncodeToString(sum[:]), Tags: copyTags(tags)})
+	return nil
+}
+
+// PutReader 流式写入大 artifact；用 TeeReader 边传边算 sha256/size。
+func (d *Dir) PutReader(ctx context.Context, ref string, r io.Reader, tags map[string]string) error {
+	if d.invalid != nil {
+		return d.invalid
+	}
+	ref, err := cleanRef(ref)
+	if err != nil {
+		return err
+	}
+	ct := DetectContentType(ref)
+	h := sha256.New()
+	cw := &countingWriter{}
+	tee := io.TeeReader(r, io.MultiWriter(h, cw))
+	if err := d.store.PutReader(ctx, d.key(ref), tee, ct); err != nil {
+		return err
+	}
+	d.record(Entry{Ref: ref, ContentType: ct, Size: cw.n, Checksum: "sha256:" + hex.EncodeToString(h.Sum(nil)), Tags: copyTags(tags)})
+	return nil
+}
+
+// Get 读取 artifact 内容。
+func (d *Dir) Get(ctx context.Context, ref string) ([]byte, error) {
+	if d.invalid != nil {
+		return nil, d.invalid
+	}
+	ref, err := cleanRef(ref)
+	if err != nil {
+		return nil, err
+	}
+	return d.store.Get(ctx, d.key(ref))
+}
+
+// Reader 流式读取 artifact。
+func (d *Dir) Reader(ctx context.Context, ref string) (io.ReadCloser, error) {
+	if d.invalid != nil {
+		return nil, d.invalid
+	}
+	ref, err := cleanRef(ref)
+	if err != nil {
+		return nil, err
+	}
+	return d.store.Reader(ctx, d.key(ref))
+}
+
+// Exists 判断 artifact 是否存在（物理，用于 serving 404 / result_ref 存在性）。
+func (d *Dir) Exists(ctx context.Context, ref string) (bool, error) {
+	if d.invalid != nil {
+		return false, d.invalid
+	}
+	ref, err := cleanRef(ref)
+	if err != nil {
+		return false, err
+	}
+	return d.store.Exists(ctx, d.key(ref))
+}
+
+// SignURL 为 artifact 签发短期直连地址（后端不支持则返回 ErrSignURLUnsupported）。
+func (d *Dir) SignURL(ctx context.Context, ref string, ttl time.Duration) (string, error) {
+	if d.invalid != nil {
+		return "", d.invalid
+	}
+	ref, err := cleanRef(ref)
+	if err != nil {
+		return "", err
+	}
+	return d.store.SignURL(ctx, d.key(ref), ttl)
+}
+
+// Finalize 把内存累积的条目写成 index.json（终态一次，单写者）。
+func (d *Dir) Finalize(ctx context.Context) error {
+	if d.invalid != nil {
+		return d.invalid
+	}
+	d.mu.Lock()
+	arts := make([]Entry, len(d.entries))
+	copy(arts, d.entries)
+	d.mu.Unlock()
+
+	var total int64
+	for _, e := range arts {
+		total += e.Size
+	}
+	idx := Index{
+		Version:     indexVersion,
+		Namespace:   d.namespace,
+		GeneratedAt: time.Now().UTC().Unix(),
+		Artifacts:   arts,
+		Stats:       Stats{Count: len(arts), TotalSize: total},
+	}
+	data, err := json.MarshalIndent(idx, "", "  ")
+	if err != nil {
+		return fmt.Errorf("artifact: marshal index: %w", err)
+	}
+	return d.store.Put(ctx, d.key(indexFileName), data, "application/json")
+}
+
+// LoadIndex 读回 index.json → 类型化可查对象（每次返回新对象，无缓存）。
+func (d *Dir) LoadIndex(ctx context.Context) (*Index, error) {
+	if d.invalid != nil {
+		return nil, d.invalid
+	}
+	data, err := d.store.Get(ctx, d.key(indexFileName))
+	if err != nil {
+		return nil, err
+	}
+	var idx Index
+	if err := json.Unmarshal(data, &idx); err != nil {
+		return nil, fmt.Errorf("artifact: unmarshal index: %w", err)
+	}
+	return &idx, nil
+}
+
+func (d *Dir) key(ref string) string { return BuildKey(d.namespace, ref) }
+
+func (d *Dir) record(e Entry) {
+	d.mu.Lock()
+	d.entries = append(d.entries, e)
+	d.mu.Unlock()
+}
+
+// countingWriter 只累计写入字节数（配合 TeeReader 算 size）。
+type countingWriter struct{ n int64 }
+
+func (w *countingWriter) Write(p []byte) (int, error) {
+	w.n += int64(len(p))
+	return len(p), nil
+}
+
+// copyTags 防御性拷贝 tags map，避免 data race；nil 则保持 nil。
+func copyTags(tags map[string]string) map[string]string {
+	if tags == nil {
+		return nil
+	}
+	out := make(map[string]string, len(tags))
+	for k, v := range tags {
+		out[k] = v
+	}
+	return out
+}
+
+// cleanRef 校验并规整 ref：拒绝空/绝对路径/逃出命名空间的 ".."。
+func cleanRef(ref string) (string, error) {
+	if ref == "" {
+		return "", fmt.Errorf("artifact: empty ref")
+	}
+	if path.IsAbs(ref) {
+		return "", fmt.Errorf("artifact: ref must be relative: %q", ref)
+	}
+	cleaned := path.Clean(ref)
+	if cleaned == ".." || strings.HasPrefix(cleaned, "../") {
+		return "", fmt.Errorf("artifact: ref escapes namespace: %q", ref)
+	}
+	if cleaned == "." {
+		return "", fmt.Errorf("artifact: ref resolves to namespace root: %q", ref)
+	}
+	return cleaned, nil
+}

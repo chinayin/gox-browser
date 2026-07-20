@@ -1,146 +1,122 @@
-package artifact_test
+package artifact
 
 import (
 	"context"
-	"io"
+	"errors"
 	"os"
-	"path/filepath"
+	"strings"
 	"testing"
-
-	"github.com/chinayin/gox-browser/artifact"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"time"
 )
 
-func TestLocalStore_Upload_Success(t *testing.T) {
-	// Arrange
-	baseDir := t.TempDir()
-	store := artifact.NewLocalStore(artifact.LocalConfig{BaseDir: baseDir})
+func TestLocalStore_PutGetRoundtrip(t *testing.T) {
+	s := NewLocalStore(LocalConfig{BaseDir: t.TempDir()})
 	ctx := context.Background()
-	data := []byte("hello world")
-
-	// Act
-	path, err := store.Upload(ctx, "ns1", "sub1", "file.txt", data)
-
-	// Assert
-	require.NoError(t, err)
-	assert.NotEmpty(t, path)
-
-	content, err := os.ReadFile(path)
-	require.NoError(t, err)
-	assert.Equal(t, data, content)
+	if err := s.Put(ctx, "task-1/a.json", []byte(`{"x":1}`), "application/json"); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	got, err := s.Get(ctx, "task-1/a.json")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if string(got) != `{"x":1}` {
+		t.Fatalf("got %q", got)
+	}
 }
 
-func TestLocalStore_Upload_NestedDir(t *testing.T) {
-	// Arrange
-	baseDir := t.TempDir()
-	store := artifact.NewLocalStore(artifact.LocalConfig{BaseDir: baseDir})
+func TestLocalStore_PutReaderCountsBytes(t *testing.T) {
+	s := NewLocalStore(LocalConfig{BaseDir: t.TempDir()})
 	ctx := context.Background()
-	data := []byte("nested content")
-
-	// Act
-	path, err := store.Upload(ctx, "project", "level1/level2/level3", "deep.json", data)
-
-	// Assert
-	require.NoError(t, err)
-	assert.NotEmpty(t, path)
-
-	content, err := os.ReadFile(path)
-	require.NoError(t, err)
-	assert.Equal(t, data, content)
-
-	// Verify directory structure was created
-	expectedDir := filepath.Join(baseDir, "project", "level1/level2/level3")
-	info, err := os.Stat(expectedDir)
-	require.NoError(t, err)
-	assert.True(t, info.IsDir())
+	if err := s.PutReader(ctx, "task-1/big.txt", strings.NewReader("hello world"), "text/plain"); err != nil {
+		t.Fatalf("PutReader: %v", err)
+	}
+	got, err := s.Get(ctx, "task-1/big.txt")
+	if err != nil || string(got) != "hello world" {
+		t.Fatalf("got %q err %v", got, err)
+	}
 }
 
-func TestLocalStore_Upload_EmptySubDir(t *testing.T) {
-	// Arrange
-	baseDir := t.TempDir()
-	store := artifact.NewLocalStore(artifact.LocalConfig{BaseDir: baseDir})
+func TestLocalStore_ExistsAndNotFound(t *testing.T) {
+	s := NewLocalStore(LocalConfig{BaseDir: t.TempDir()})
 	ctx := context.Background()
-	data := []byte("no subdir content")
-
-	// Act
-	path, err := store.Upload(ctx, "ns1", "", "file.txt", data)
-
-	// Assert
-	require.NoError(t, err)
-	assert.NotEmpty(t, path)
-
-	content, err := os.ReadFile(path)
-	require.NoError(t, err)
-	assert.Equal(t, data, content)
+	ok, err := s.Exists(ctx, "task-1/missing")
+	if err != nil || ok {
+		t.Fatalf("Exists on missing = %v,%v", ok, err)
+	}
+	if _, err := s.Get(ctx, "task-1/missing"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("Get missing err = %v, want ErrNotFound", err)
+	}
 }
 
-func TestLocalStore_Download_Success(t *testing.T) {
-	// Arrange
-	baseDir := t.TempDir()
-	store := artifact.NewLocalStore(artifact.LocalConfig{BaseDir: baseDir})
-	ctx := context.Background()
-	data := []byte("download me")
-
-	path, err := store.Upload(ctx, "ns1", "sub1", "file.txt", data)
-	require.NoError(t, err)
-
-	// Act
-	downloaded, err := store.Download(ctx, path)
-
-	// Assert
-	require.NoError(t, err)
-	assert.Equal(t, data, downloaded)
+func TestLocalStore_SignURLUnsupported(t *testing.T) {
+	s := NewLocalStore(LocalConfig{BaseDir: t.TempDir()})
+	if _, err := s.SignURL(context.Background(), "task-1/a", time.Minute); !errors.Is(err, ErrSignURLUnsupported) {
+		t.Fatalf("SignURL err = %v, want ErrSignURLUnsupported", err)
+	}
 }
 
-func TestLocalStore_Download_NotFound(t *testing.T) {
-	// Arrange
-	baseDir := t.TempDir()
-	store := artifact.NewLocalStore(artifact.LocalConfig{BaseDir: baseDir})
-	ctx := context.Background()
-
-	// Act
-	_, err := store.Download(ctx, filepath.Join(baseDir, "nonexistent", "file.txt"))
-
-	// Assert
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "not found",
-		"error should contain 'not found', got: %s", err.Error())
+func TestLocalStore_RejectsEscape(t *testing.T) {
+	s := NewLocalStore(LocalConfig{BaseDir: t.TempDir()})
+	if err := s.Put(context.Background(), "../escape", []byte("x"), ""); err == nil {
+		t.Fatal("Put with escaping key should error")
+	}
 }
 
-func TestLocalStore_Reader_Success(t *testing.T) {
-	// Arrange
-	baseDir := t.TempDir()
-	store := artifact.NewLocalStore(artifact.LocalConfig{BaseDir: baseDir})
+func TestLocalStore_ReaderRoundtrip(t *testing.T) {
+	s := NewLocalStore(LocalConfig{BaseDir: t.TempDir()})
 	ctx := context.Background()
-	data := []byte("stream this content")
-
-	path, err := store.Upload(ctx, "ns1", "sub1", "stream.txt", data)
-	require.NoError(t, err)
-
-	// Act
-	reader, err := store.Reader(ctx, path)
-	require.NoError(t, err)
-	defer reader.Close()
-
-	content, err := io.ReadAll(reader)
-
-	// Assert
-	require.NoError(t, err)
-	assert.Equal(t, data, content)
+	if err := s.Put(ctx, "task-1/stream.txt", []byte("stream this"), "text/plain"); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	r, err := s.Reader(ctx, "task-1/stream.txt")
+	if err != nil {
+		t.Fatalf("Reader: %v", err)
+	}
+	defer r.Close()
+	buf := make([]byte, len("stream this"))
+	if _, err := r.Read(buf); err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	if string(buf) != "stream this" {
+		t.Fatalf("got %q", buf)
+	}
 }
 
-func TestLocalStore_Reader_NotFound(t *testing.T) {
-	// Arrange
+func TestLocalStore_ReaderNotFound(t *testing.T) {
+	s := NewLocalStore(LocalConfig{BaseDir: t.TempDir()})
+	if _, err := s.Reader(context.Background(), "task-1/missing"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("Reader missing err = %v, want ErrNotFound", err)
+	}
+}
+
+func TestLocalStore_RejectsSymlinkEscape(t *testing.T) {
 	baseDir := t.TempDir()
-	store := artifact.NewLocalStore(artifact.LocalConfig{BaseDir: baseDir})
+	externalDir := t.TempDir()
+
+	// 在外部目录创建真实文件
+	externalFile := externalDir + "/external.txt"
+	if err := os.WriteFile(externalFile, []byte("external"), 0o600); err != nil {
+		t.Fatalf("WriteFile external: %v", err)
+	}
+
+	// 在 baseDir 内创建指向外部文件的软链
+	symlinkPath := baseDir + "/link"
+	if err := os.Symlink(externalFile, symlinkPath); err != nil {
+		t.Skip("symlink 不可用")
+	}
+
+	s := NewLocalStore(LocalConfig{BaseDir: baseDir})
 	ctx := context.Background()
 
-	// Act
-	_, err := store.Reader(ctx, filepath.Join(baseDir, "nonexistent", "file.txt"))
+	// 尝试通过软链 key 读取，应该被拒绝
+	_, err := s.Get(ctx, "link")
+	if err == nil || !strings.Contains(err.Error(), "escapes base dir") {
+		t.Fatalf("Get via symlink should error with 'escapes base dir', got: %v", err)
+	}
 
-	// Assert
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "not found",
-		"error should contain 'not found', got: %s", err.Error())
+	// Reader 也应该被拒绝
+	_, err = s.Reader(ctx, "link")
+	if err == nil || !strings.Contains(err.Error(), "escapes base dir") {
+		t.Fatalf("Reader via symlink should error with 'escapes base dir', got: %v", err)
+	}
 }

@@ -5,21 +5,24 @@ import (
 	"io"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
-// Storer 产出物存储接口
+// Storer 存储后端 SPI（给存储后端实现者），按完整 key 操作。
+// 扩展点：加新后端（GCS/MinIO…）只需实现一份。消费方不直接用它，用 Dir 门面。
 type Storer interface {
-	// Upload 上传数据，返回存储路径/key
-	// namespace: 逻辑分组 (如 taskID、jobID)
-	// subDir: 子目录 (如 "001", "step_01")，可为空
-	// name: 文件名 (如 "screenshot.png")
-	Upload(ctx context.Context, namespace, subDir, name string, data []byte) (string, error)
-
-	// Download 下载数据
-	Download(ctx context.Context, path string) ([]byte, error)
-
-	// Reader 返回流式读取器 (大文件场景)
-	Reader(ctx context.Context, path string) (io.ReadCloser, error)
+	// Put 写对象（小对象便捷入口）。contentType 供后端设原生元信息（如 S3 Content-Type），仅服务用途。
+	Put(ctx context.Context, key string, data []byte, contentType string) error
+	// PutReader 流式写对象（大对象：录屏/大下载，避免整块入内存）。
+	PutReader(ctx context.Context, key string, r io.Reader, contentType string) error
+	// Get 读对象（整块）。不存在返回 ErrNotFound。
+	Get(ctx context.Context, key string) ([]byte, error)
+	// Reader 流式读（大文件）。不设内部超时，生命周期/超时由调用方经 ctx 控制。
+	Reader(ctx context.Context, key string) (io.ReadCloser, error)
+	// Exists 判断对象是否存在。
+	Exists(ctx context.Context, key string) (bool, error)
+	// SignURL 签发短期直连下载地址。不支持的后端（本地）返回 ErrSignURLUnsupported。
+	SignURL(ctx context.Context, key string, ttl time.Duration) (string, error)
 }
 
 // BuildKey 构建存储路径

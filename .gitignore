@@ -37,3 +37,7 @@ coverage.html
 
 # Integration test runtime output
 runtime/
+
+# Agent / tooling scratch (Claude Code、superpowers SDD 账本等临时产物)
+.superpowers/
+.claude/
